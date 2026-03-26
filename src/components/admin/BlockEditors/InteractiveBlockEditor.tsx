@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
-import { Sliders, GitBranch, Activity, Link, Waves, AudioLines, Clock, Gauge } from "lucide-react";
+import { useState, type ElementType } from "react";
+import { Sliders, GitBranch, Activity, Waves, AudioLines, Clock, Gauge } from "lucide-react";
 import type { ContentBlock, InteractiveBlockContent, InteractiveSubtype } from "@/types";
 
-const SUBTYPES: { type: InteractiveSubtype; label: string; desc: string; Icon: React.ElementType }[] = [
+const SUBTYPES: { type: InteractiveSubtype; label: string; desc: string; Icon: ElementType }[] = [
   { type: "eq",          label: "EQ Lab",          desc: "4-band parametric EQ — drag bands, hear the effect",       Icon: Sliders    },
   { type: "compressor",  label: "Compressor Lab",   desc: "Real compressor knobs with gain-reduction meter",          Icon: Activity   },
   { type: "reverb",      label: "Reverb Lab",       desc: "Room reverb with IR — adjust size, decay, mix",           Icon: Waves      },
