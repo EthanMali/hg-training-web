@@ -110,9 +110,23 @@ export default async function DashboardPage() {
                   <Link
                     key={enrollment.id}
                     href={`/courses/${course.slug}`}
-                    className="group flex flex-col p-5 rounded-xl transition-all duration-200"
+                    className="group flex flex-col rounded-xl overflow-hidden transition-all duration-200"
                     style={{ border: "1px solid #1a1a1a", background: "#0a0a0a" }}
                   >
+                    {course.thumbnail_url ? (
+                      <div className="w-full aspect-video overflow-hidden">
+                        <img
+                          src={course.thumbnail_url}
+                          alt={course.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-video flex items-center justify-center" style={{ background: "#111" }}>
+                        <BookOpen size={24} style={{ color: "rgba(255,255,255,0.08)" }} />
+                      </div>
+                    )}
+                    <div className="p-5 flex flex-col flex-1">
                     <div className="flex items-center justify-between mb-3">
                       <Badge variant={course.difficulty as "beginner" | "intermediate" | "advanced"}>
                         {course.difficulty}
@@ -126,6 +140,7 @@ export default async function DashboardPage() {
                         <span>{done}/{total} lessons</span>
                         <span>{Math.round(pct)}%</span>
                       </div>
+                    </div>
                     </div>
                   </Link>
                 );
