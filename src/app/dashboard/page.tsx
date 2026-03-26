@@ -110,37 +110,39 @@ export default async function DashboardPage() {
                   <Link
                     key={enrollment.id}
                     href={`/courses/${course.slug}`}
-                    className="group flex flex-col rounded-xl overflow-hidden transition-all duration-200"
+                    className="group flex flex-col rounded-xl transition-all duration-200 overflow-hidden"
                     style={{ border: "1px solid #1a1a1a", background: "#0a0a0a" }}
                   >
+                    {/* Thumbnail */}
                     {course.thumbnail_url ? (
-                      <div className="w-full aspect-video overflow-hidden">
+                      <div className="w-full aspect-video overflow-hidden bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={course.thumbnail_url}
                           alt={course.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                       </div>
                     ) : (
-                      <div className="w-full aspect-video flex items-center justify-center" style={{ background: "#111" }}>
-                        <BookOpen size={24} style={{ color: "rgba(255,255,255,0.08)" }} />
+                      <div className="w-full aspect-video flex items-center justify-center" style={{ background: "#0f0f0f" }}>
+                        <BookOpen size={24} style={{ color: "rgba(255,255,255,0.06)" }} />
                       </div>
                     )}
                     <div className="p-5 flex flex-col flex-1">
-                    <div className="flex items-center justify-between mb-3">
-                      <Badge variant={course.difficulty as "beginner" | "intermediate" | "advanced"}>
-                        {course.difficulty}
-                      </Badge>
-                      {isComplete && <CheckCircle2 size={14} style={{ color: "#4ade80" }} />}
-                    </div>
-                    <h3 className="font-medium text-white text-sm mb-3">{course.title}</h3>
-                    <div className="mt-auto space-y-2">
-                      <Progress value={pct} size="xs" />
-                      <div className="flex items-center justify-between text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-                        <span>{done}/{total} lessons</span>
-                        <span>{Math.round(pct)}%</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <Badge variant={course.difficulty as "beginner" | "intermediate" | "advanced"}>
+                          {course.difficulty}
+                        </Badge>
+                        {isComplete && <CheckCircle2 size={14} style={{ color: "#4ade80" }} />}
                       </div>
-                    </div>
+                      <h3 className="font-medium text-white text-sm mb-3">{course.title}</h3>
+                      <div className="mt-auto space-y-2">
+                        <Progress value={pct} size="xs" />
+                        <div className="flex items-center justify-between text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
+                          <span>{done}/{total} lessons</span>
+                          <span>{Math.round(pct)}%</span>
+                        </div>
+                      </div>
                     </div>
                   </Link>
                 );

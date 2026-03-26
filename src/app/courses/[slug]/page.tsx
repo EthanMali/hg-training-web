@@ -99,7 +99,19 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
 
               {/* Sticky CTA card */}
               <div className="lg:w-72 flex-shrink-0">
-                <div className="rounded-xl p-6 sticky top-20" style={{ border: "1px solid #1e1e1e", background: "#0f0f0f" }}>
+                <div className="rounded-xl overflow-hidden sticky top-20" style={{ border: "1px solid #1e1e1e", background: "#0f0f0f" }}>
+                  {/* Thumbnail */}
+                  {(course as Course).thumbnail_url && (
+                    <div className="w-full aspect-video overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={(course as Course).thumbnail_url!}
+                        alt={course.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="p-6">
                   {enrollment ? (
                     <>
                       <div className="mb-4 space-y-1.5">
@@ -134,6 +146,7 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
             </div>
           </div>
         </div>
+      </div>
 
         {/* Lesson list */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
