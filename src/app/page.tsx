@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import Badge from "@/components/ui/Badge";
 import { ArrowRight, Sliders, BookOpen, CheckCircle2 } from "lucide-react";
 import type { Course } from "@/types";
-import SoundBars from "@/components/landing/SoundBars";
+import VUMeters from "@/components/landing/SoundBars";
 import FadeIn from "@/components/landing/FadeIn";
 
 export default async function Home() {
@@ -60,9 +60,9 @@ export default async function Home() {
               House of God — Sound &amp; Media Team
             </div>
 
-            {/* Animated sound bars */}
-            <div className="opacity-60">
-              <SoundBars count={20} />
+            {/* Real VU meters */}
+            <div style={{ animation: "fadeIn 0.5s ease both" }}>
+              <VUMeters />
             </div>
 
             {/* Headline */}
@@ -239,7 +239,7 @@ export default async function Home() {
                           className="w-full aspect-video flex items-center justify-center"
                           style={{ background: "#0d0d0d" }}
                         >
-                          <SoundBars count={12} />
+                          <VUMeters />
                         </div>
                       )}
                       <div className="p-5 flex flex-col flex-1 gap-3">

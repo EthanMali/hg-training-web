@@ -1,295 +1,439 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from "react";
-import { RotateCcw, Info } from "lucide-react";
+import { useRef, useState, useEffect, useCallback } from "react";
+import { Play, Pause, RotateCcw } from "lucide-react";
 
-/* ── Constants ──────────────────────────────────────── */
-const W = 560;
-const H = 180;
-const PAD = { t: 16, r: 16, b: 32, l: 44 };
-const PW = W - PAD.l - PAD.r;
-const PH = H - PAD.t - PAD.b;
-const FMIN = 20, FMAX = 20000;
-const GMIN = -14, GMAX = 14;
-const NPTS = 300;
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-const FREQ_LABELS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-const GAIN_LABELS = [12, 6, 0, -6, -12];
-
-/* ── Math helpers ───────────────────────────────────── */
-function fToX(f: number) {
-  return (Math.log10(f / FMIN) / Math.log10(FMAX / FMIN)) * PW;
-}
-function gToY(g: number) {
-  return ((GMAX - g) / (GMAX - GMIN)) * PH;
-}
-function xToF(x: number) {
-  return FMIN * Math.pow(FMAX / FMIN, x / PW);
-}
-function yToG(y: number) {
-  return GMAX - (y / PH) * (GMAX - GMIN);
-}
-
-function calcResponse(bands: Band[], f: number): number {
-  let total = 0;
-  for (const b of bands) {
-    if (Math.abs(b.gain) < 0.01) continue;
-    const lr = Math.log2(f / b.freq);
-    total += b.gain * Math.exp(-(lr * lr) * b.q * 0.9);
-  }
-  return Math.max(GMIN, Math.min(GMAX, total));
-}
-
-function buildPath(bands: Band[]): string {
-  const pts = Array.from({ length: NPTS }, (_, i) => {
-    const f = FMIN * Math.pow(FMAX / FMIN, i / (NPTS - 1));
-    const x = fToX(f) + PAD.l;
-    const y = gToY(calcResponse(bands, f)) + PAD.t;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return `M ${pts.join(" L ")}`;
-}
-
-/* ── Types ──────────────────────────────────────────── */
-interface Band {
-  id: number;
+interface BandState {
+  id: string;
+  label: string;
+  color: string;
+  type: BiquadFilterType;
   freq: number;
   gain: number;
   q: number;
-  color: string;
-  label: string;
 }
 
-const DEFAULT_BANDS: Band[] = [
-  { id: 0, freq: 80,   gain: 0, q: 0.9, color: "#3b82f6", label: "Low" },
-  { id: 1, freq: 400,  gain: 0, q: 1.2, color: "#10b981", label: "Low-Mid" },
-  { id: 2, freq: 3000, gain: 0, q: 1.2, color: "#f59e0b", label: "High-Mid" },
-  { id: 3, freq: 12000,gain: 0, q: 0.9, color: "#ef4444", label: "High" },
+interface Props {
+  title?: string;
+  description?: string;
+  audioUrl?: string;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const MIN_FREQ = 20;
+const MAX_FREQ = 20000;
+const MIN_GAIN = -14;
+const MAX_GAIN = 14;
+const SVG_W = 640;
+const SVG_H = 180;
+const N = 512;
+
+const FREQ_AXIS = [
+  { f: 20, label: "20" }, { f: 50, label: "50" }, { f: 100, label: "100" },
+  { f: 200, label: "200" }, { f: 500, label: "500" }, { f: 1000, label: "1k" },
+  { f: 2000, label: "2k" }, { f: 5000, label: "5k" }, { f: 10000, label: "10k" },
+  { f: 20000, label: "20k" },
+];
+const DB_GRID = [-12, -6, 0, 6, 12];
+
+const DEFAULT_BANDS: BandState[] = [
+  { id: "low",   label: "Low",     color: "#6366f1", type: "lowshelf",  freq: 100,   gain: 0, q: 0.7 },
+  { id: "lomid", label: "Low Mid", color: "#10b981", type: "peaking",   freq: 500,   gain: 0, q: 1.4 },
+  { id: "himid", label: "Hi Mid",  color: "#f59e0b", type: "peaking",   freq: 3000,  gain: 0, q: 1.4 },
+  { id: "high",  label: "High",    color: "#ef4444", type: "highshelf", freq: 10000, gain: 0, q: 0.7 },
 ];
 
+// ── Math helpers ──────────────────────────────────────────────────────────────
+
+function fToX(f: number) {
+  return (Math.log10(f / MIN_FREQ) / Math.log10(MAX_FREQ / MIN_FREQ)) * SVG_W;
+}
+function xToF(x: number) {
+  return MIN_FREQ * Math.pow(MAX_FREQ / MIN_FREQ, Math.max(0, Math.min(SVG_W, x)) / SVG_W);
+}
+function gToY(g: number) {
+  return ((MAX_GAIN - g) / (MAX_GAIN - MIN_GAIN)) * SVG_H;
+}
+function yToG(y: number) {
+  return MAX_GAIN - (Math.max(0, Math.min(SVG_H, y)) / SVG_H) * (MAX_GAIN - MIN_GAIN);
+}
 function fmtFreq(f: number) {
   return f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 0 : 1)}k` : `${Math.round(f)}`;
 }
 
-/* ── Component ──────────────────────────────────────── */
-interface Props {
-  title?: string;
-  description?: string;
+// Gaussian fallback when no AudioContext yet
+function gaussianPath(bands: BandState[]): string {
+  const pts: string[] = [];
+  for (let i = 0; i <= N; i++) {
+    const x = (i / N) * SVG_W;
+    const freq = xToF(x);
+    let db = 0;
+    for (const b of bands) {
+      if (b.gain === 0) continue;
+      const oct = Math.log2(freq / b.freq);
+      const sigma = 1.0 / (b.q * 1.4);
+      db += b.gain * Math.exp(-(oct * oct) / (2 * sigma * sigma));
+    }
+    pts.push(`${x.toFixed(1)},${Math.max(0, Math.min(SVG_H, gToY(db))).toFixed(1)}`);
+  }
+  return `M ${pts.join(" L ")}`;
 }
 
-export default function InteractiveEQ({ title, description }: Props) {
-  const [bands, setBands] = useState<Band[]>(DEFAULT_BANDS);
-  const [active, setActive] = useState<number | null>(null);
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [showInfo, setShowInfo] = useState(false);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ id: number; startX: number; startY: number; startFreq: number; startGain: number } | null>(null);
+// ── Component ─────────────────────────────────────────────────────────────────
 
-  const getSVGCoords = useCallback((e: PointerEvent | React.PointerEvent) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect = svg.getBoundingClientRect();
-    const scaleX = W / rect.width;
-    const scaleY = H / rect.height;
+export default function InteractiveEQ({ title, description, audioUrl }: Props) {
+  const [bands, setBands] = useState<BandState[]>(() => DEFAULT_BANDS.map(b => ({ ...b })));
+  const [playing, setPlaying] = useState(false);
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [curve, setCurve] = useState<string>(() => gaussianPath(DEFAULT_BANDS));
+
+  const ctxRef     = useRef<AudioContext | null>(null);
+  const filtersRef = useRef<Map<string, BiquadFilterNode>>(new Map());
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const bufferRef  = useRef<AudioBuffer | null>(null);
+  const sourceRef  = useRef<AudioBufferSourceNode | null>(null);
+  const offsetRef  = useRef(0);
+  const startRef   = useRef(0);
+  const svgRef     = useRef<SVGSVGElement>(null);
+  const loadingRef = useRef(false);
+
+  // ── Audio context + filter chain ──────────────────────────────────────────
+
+  function ensureCtx(): AudioContext {
+    if (ctxRef.current) return ctxRef.current;
+    const ctx = new AudioContext();
+    ctxRef.current = ctx;
+
+    const nodes = DEFAULT_BANDS.map(b => {
+      const f = ctx.createBiquadFilter();
+      f.type = b.type;
+      f.frequency.value = b.freq;
+      f.gain.value = b.gain;
+      f.Q.value = b.q;
+      filtersRef.current.set(b.id, f);
+      return f;
+    });
+
+    const gn = ctx.createGain();
+    gn.gain.value = 0.85;
+    gainNodeRef.current = gn;
+    for (let i = 0; i < nodes.length - 1; i++) nodes[i].connect(nodes[i + 1]);
+    nodes[nodes.length - 1].connect(gn);
+    gn.connect(ctx.destination);
+
+    return ctx;
+  }
+
+  async function loadAudio() {
+    if (!audioUrl || bufferRef.current || loadingRef.current) return;
+    loadingRef.current = true;
+    const ctx = ensureCtx();
+    setLoadState("loading");
+    try {
+      const res = await fetch(audioUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const ab = await res.arrayBuffer();
+      bufferRef.current = await ctx.decodeAudioData(ab);
+      setLoadState("ready");
+    } catch (err) {
+      console.error("[InteractiveEQ] load error:", err);
+      setLoadState("error");
+    } finally {
+      loadingRef.current = false;
+    }
+  }
+
+  // ── Curve ────────────────────────────────────────────────────────────────
+
+  const computeCurve = useCallback((currentBands: BandState[]) => {
+    const ctx = ctxRef.current;
+    if (!ctx || filtersRef.current.size === 0) {
+      setCurve(gaussianPath(currentBands));
+      return;
+    }
+    const freqs = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      freqs[i] = MIN_FREQ * Math.pow(MAX_FREQ / MIN_FREQ, i / (N - 1));
+    }
+    const sum = new Float32Array(N).fill(0);
+    const mag = new Float32Array(N);
+    const ph  = new Float32Array(N);
+    for (const b of currentBands) {
+      const filter = filtersRef.current.get(b.id);
+      if (!filter) continue;
+      filter.getFrequencyResponse(freqs, mag, ph);
+      for (let i = 0; i < N; i++) {
+        sum[i] += 20 * Math.log10(Math.max(mag[i], 1e-9));
+      }
+    }
+    const pts = Array.from({ length: N }, (_, i) => {
+      const x = ((i / (N - 1)) * SVG_W).toFixed(1);
+      const y = Math.max(0, Math.min(SVG_H, gToY(sum[i]))).toFixed(1);
+      return `${x},${y}`;
+    });
+    setCurve(`M ${pts.join(" L ")}`);
+  }, []);
+
+  // ── Apply band → filter ───────────────────────────────────────────────────
+
+  const applyBand = useCallback((band: BandState) => {
+    const filter = filtersRef.current.get(band.id);
+    if (!filter || !ctxRef.current) return;
+    const t = ctxRef.current.currentTime;
+    filter.frequency.setTargetAtTime(band.freq, t, 0.006);
+    filter.gain.setTargetAtTime(band.gain, t, 0.006);
+    filter.Q.setTargetAtTime(band.q, t, 0.006);
+  }, []);
+
+  // ── Playback ──────────────────────────────────────────────────────────────
+
+  async function togglePlay() {
+    const ctx = ensureCtx();
+    if (!bufferRef.current) await loadAudio();
+    if (!bufferRef.current) return;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    if (playing) {
+      sourceRef.current?.stop();
+      sourceRef.current = null;
+      offsetRef.current = (ctx.currentTime - startRef.current) % bufferRef.current.duration;
+      setPlaying(false);
+    } else {
+      const src = ctx.createBufferSource();
+      src.buffer = bufferRef.current;
+      src.loop = true;
+      const first = filtersRef.current.get(DEFAULT_BANDS[0].id);
+      if (first) src.connect(first);
+      const off = offsetRef.current % bufferRef.current.duration;
+      src.start(0, off);
+      startRef.current = ctx.currentTime - off;
+      sourceRef.current = src;
+      setPlaying(true);
+    }
+  }
+
+  // ── Reset ─────────────────────────────────────────────────────────────────
+
+  function reset() {
+    const fresh = DEFAULT_BANDS.map(b => ({ ...b }));
+    setBands(fresh);
+    for (const b of fresh) applyBand(b);
+    computeCurve(fresh);
+  }
+
+  // ── Drag ─────────────────────────────────────────────────────────────────
+
+  function svgPt(e: React.PointerEvent) {
+    const svg = svgRef.current!;
+    const r = svg.getBoundingClientRect();
     return {
-      x: (e.clientX - rect.left) * scaleX - PAD.l,
-      y: (e.clientY - rect.top) * scaleY - PAD.t,
+      x: ((e.clientX - r.left) / r.width) * SVG_W,
+      y: ((e.clientY - r.top) / r.height) * SVG_H,
+    };
+  }
+
+  function onBandDown(e: React.PointerEvent, id: string) {
+    e.preventDefault();
+    (e.target as Element).setPointerCapture(e.pointerId);
+    setDragging(id);
+    ensureCtx(); // create ctx on first touch so getFrequencyResponse works immediately
+  }
+
+  function onSvgMove(e: React.PointerEvent) {
+    if (!dragging) return;
+    const { x, y } = svgPt(e);
+    const newFreq = Math.max(25, Math.min(18000, xToF(x)));
+    const newGain = Math.max(MIN_GAIN, Math.min(MAX_GAIN, yToG(y)));
+    setBands(prev => {
+      const next = prev.map(b => b.id === dragging ? { ...b, freq: newFreq, gain: newGain } : b);
+      applyBand(next.find(b => b.id === dragging)!);
+      computeCurve(next);
+      return next;
+    });
+  }
+
+  function onSvgUp() { setDragging(null); }
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      try { sourceRef.current?.stop(); ctxRef.current?.close(); } catch {}
     };
   }, []);
 
-  const onPointerDown = useCallback((e: React.PointerEvent<SVGCircleElement>, id: number) => {
-    e.stopPropagation();
-    (e.target as SVGCircleElement).setPointerCapture(e.pointerId);
-    const band = DEFAULT_BANDS.find(b => b.id === id)!;
-    const { x, y } = getSVGCoords(e);
-    dragRef.current = { id, startX: x, startY: y, startFreq: bands[id].freq, startGain: bands[id].gain };
-    setActive(id);
-    void band;
-  }, [bands, getSVGCoords]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!dragRef.current) return;
-    const { id, startX, startY, startFreq, startGain } = dragRef.current;
-    const { x, y } = getSVGCoords(e);
-
-    const dx = x - startX;
-    const dy = y - startY;
-
-    // Map pixel delta to frequency/gain change
-    const logF = Math.log10(startFreq / FMIN) / Math.log10(FMAX / FMIN);
-    const newLogF = Math.max(0, Math.min(1, logF + dx / PW));
-    const newFreq = FMIN * Math.pow(FMAX / FMIN, newLogF);
-    const newGain = Math.max(GMIN, Math.min(GMAX, startGain - (dy / PH) * (GMAX - GMIN)));
-
-    setBands(prev => prev.map(b => b.id === id ? { ...b, freq: newFreq, gain: newGain } : b));
-  }, [getSVGCoords]);
-
-  const onPointerUp = useCallback(() => {
-    dragRef.current = null;
-    setActive(null);
-  }, []);
-
-  function reset() {
-    setBands(DEFAULT_BANDS.map(b => ({ ...b })));
-  }
-
-  const path = buildPath(bands);
-  const zeroY = gToY(0) + PAD.t;
+  const isLoading = loadState === "loading";
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e1e1e", background: "#080808" }}>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #1a1a1a" }}>
+      <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #1a1a1a" }}>
         <div>
-          <p className="text-sm font-semibold text-white">{title || "Interactive EQ Lab"}</p>
-          {description && <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{description}</p>}
+          <p className="text-sm font-semibold text-white">{title || "EQ Lab"}</p>
+          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+            {description || "Drag the band handles to shape the frequency response — hear it live"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowInfo(!showInfo)} className="p-1.5 rounded-md hover:bg-white/5 transition-colors" style={{ color: "rgba(255,255,255,0.3)" }}>
-            <Info size={14} />
-          </button>
-          <button onClick={reset} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/5" style={{ color: "rgba(255,255,255,0.4)" }}>
-            <RotateCcw size={11} /> Reset
+          {audioUrl && (
+            <button
+              onClick={togglePlay}
+              disabled={isLoading || loadState === "error"}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: playing ? "#1f1f1f" : "white",
+                color: playing ? "white" : "black",
+                border: playing ? "1px solid #333" : "none",
+                opacity: isLoading || loadState === "error" ? 0.5 : 1,
+              }}
+            >
+              {isLoading ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
+                  Loading…
+                </span>
+              ) : playing ? (
+                <><Pause size={11} /> Stop</>
+              ) : (
+                <><Play size={11} /> Play</>
+              )}
+            </button>
+          )}
+          <button
+            onClick={reset}
+            className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+            style={{ color: "rgba(255,255,255,0.3)" }}
+            title="Reset to flat"
+          >
+            <RotateCcw size={13} />
           </button>
         </div>
       </div>
 
-      {showInfo && (
-        <div className="px-5 py-3 text-xs" style={{ background: "#0a0800", borderBottom: "1px solid #1a1a1a", color: "rgba(255,255,255,0.5)" }}>
-          <strong className="text-amber-400">How to use:</strong> Drag the coloured dots to adjust each EQ band. Left/right changes frequency, up/down changes gain (boost/cut). Try boosting the High-Mid around 3kHz to hear how presence is added to a vocal.
-        </div>
-      )}
-
-      {/* SVG EQ display */}
-      <div className="px-4 pt-4 pb-2">
+      {/* SVG */}
+      <div className="px-4 pt-4 pb-1">
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full"
-          style={{ cursor: active !== null ? "grabbing" : "default", userSelect: "none" }}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          className="w-full rounded-xl"
+          style={{
+            background: "#0c0c0c",
+            touchAction: "none",
+            userSelect: "none",
+            cursor: dragging ? "grabbing" : "default",
+          }}
+          onPointerMove={onSvgMove}
+          onPointerUp={onSvgUp}
+          onPointerLeave={onSvgUp}
         >
-          {/* Grid lines — gain */}
-          {GAIN_LABELS.map(g => {
-            const y = gToY(g) + PAD.t;
-            return (
-              <g key={g}>
-                <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y}
-                  stroke={g === 0 ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)"}
-                  strokeWidth={g === 0 ? 1 : 0.5}
-                  strokeDasharray={g === 0 ? "none" : "2,3"}
-                />
-                <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={9} fill="rgba(255,255,255,0.3)">
-                  {g > 0 ? `+${g}` : g}
-                </text>
-              </g>
-            );
-          })}
+          {/* dB grid */}
+          {DB_GRID.map(db => (
+            <line key={db}
+              x1={0} y1={gToY(db)} x2={SVG_W} y2={gToY(db)}
+              stroke={db === 0 ? "#252525" : "#181818"}
+              strokeWidth={db === 0 ? 1.5 : 0.8}
+            />
+          ))}
+          {/* Freq grid */}
+          {FREQ_AXIS.map(({ f }) => (
+            <line key={f}
+              x1={fToX(f)} y1={0} x2={fToX(f)} y2={SVG_H}
+              stroke="#181818" strokeWidth={0.8}
+            />
+          ))}
 
-          {/* Grid lines — frequency */}
-          {FREQ_LABELS.map(f => {
-            const x = fToX(f) + PAD.l;
-            return (
-              <g key={f}>
-                <line x1={x} y1={PAD.t} x2={x} y2={H - PAD.b}
-                  stroke="rgba(255,255,255,0.05)" strokeWidth={0.5}
-                />
-                <text x={x} y={H - PAD.b + 12} textAnchor="middle" fontSize={8.5} fill="rgba(255,255,255,0.3)">
-                  {fmtFreq(f)}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Clip region */}
-          <clipPath id="eq-clip">
-            <rect x={PAD.l} y={PAD.t} width={PW} height={PH} />
-          </clipPath>
-
-          {/* Fill under curve */}
-          <path
-            d={`${path} L ${W - PAD.r},${zeroY} L ${PAD.l},${zeroY} Z`}
-            fill="rgba(255,255,255,0.04)"
-            clipPath="url(#eq-clip)"
-          />
-
-          {/* Curve */}
-          <path
-            d={path}
-            fill="none"
-            stroke="rgba(255,255,255,0.7)"
-            strokeWidth={1.5}
-            clipPath="url(#eq-clip)"
-          />
+          {/* Curve fill */}
+          {curve && (
+            <path
+              d={`${curve} L ${SVG_W},${gToY(0)} L 0,${gToY(0)} Z`}
+              fill="rgba(255,255,255,0.03)"
+            />
+          )}
+          {/* Curve line */}
+          {curve && (
+            <path d={curve} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={1.5} />
+          )}
 
           {/* Band handles */}
-          {bands.map(band => {
-            const cx = fToX(band.freq) + PAD.l;
-            const cy = gToY(band.gain) + PAD.t;
-            const isActive = active === band.id;
-            const isHov = hovered === band.id;
+          {bands.map(b => {
+            const cx = fToX(b.freq);
+            const cy = gToY(b.gain);
+            const active = dragging === b.id;
             return (
-              <g key={band.id}>
-                {/* Crosshair lines */}
-                {(isActive || isHov) && (
-                  <>
-                    <line x1={cx} y1={PAD.t} x2={cx} y2={H - PAD.b} stroke={band.color} strokeWidth={0.5} strokeDasharray="2,2" opacity={0.4} clipPath="url(#eq-clip)" />
-                    <line x1={PAD.l} y1={cy} x2={W - PAD.r} y2={cy} stroke={band.color} strokeWidth={0.5} strokeDasharray="2,2" opacity={0.4} clipPath="url(#eq-clip)" />
-                  </>
-                )}
-
-                {/* Handle circle */}
-                <circle
-                  cx={cx} cy={cy} r={isActive ? 9 : isHov ? 8 : 6}
-                  fill={band.color}
-                  fillOpacity={isActive ? 1 : 0.85}
-                  stroke={isActive ? "white" : band.color}
-                  strokeWidth={isActive ? 1.5 : 0}
-                  style={{ cursor: "grab" }}
-                  onPointerDown={(e) => onPointerDown(e, band.id)}
-                  onPointerEnter={() => setHovered(band.id)}
-                  onPointerLeave={() => setHovered(null)}
-                  clipPath="url(#eq-clip)"
+              <g key={b.id}>
+                <line
+                  x1={cx} y1={0} x2={cx} y2={SVG_H}
+                  stroke={b.color}
+                  strokeWidth={active ? 1 : 0.5}
+                  strokeOpacity={active ? 0.4 : 0.15}
+                  strokeDasharray="3 3"
                 />
-
-                {/* Tooltip */}
-                {(isActive || isHov) && (
-                  <g>
-                    <rect
-                      x={Math.min(cx + 8, W - PAD.r - 70)} y={cy - 22}
-                      width={66} height={20} rx={4}
-                      fill="#111" stroke="rgba(255,255,255,0.1)" strokeWidth={0.5}
-                    />
-                    <text
-                      x={Math.min(cx + 12, W - PAD.r - 66)} y={cy - 8}
-                      fontSize={9} fill="white"
-                    >
-                      {fmtFreq(band.freq)}Hz  {band.gain >= 0 ? "+" : ""}{band.gain.toFixed(1)}dB
-                    </text>
-                  </g>
-                )}
+                <circle
+                  cx={cx} cy={cy}
+                  r={active ? 9 : 7}
+                  fill={b.color}
+                  fillOpacity={active ? 0.95 : 0.7}
+                  stroke="white"
+                  strokeWidth={active ? 2 : 1.2}
+                  strokeOpacity={0.5}
+                  style={{ cursor: "grab" }}
+                  onPointerDown={e => onBandDown(e, b.id)}
+                />
               </g>
             );
           })}
         </svg>
+
+        {/* Freq axis */}
+        <div className="flex justify-between px-0.5 mt-1.5 mb-1">
+          {FREQ_AXIS.filter(({ f }) => [20, 100, 500, 1000, 5000, 20000].includes(f)).map(({ f, label }) => (
+            <span key={f} className="text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>{label}</span>
+          ))}
+        </div>
       </div>
 
-      {/* Band strip */}
-      <div className="grid grid-cols-4 gap-px px-4 pb-4" style={{ borderTop: "1px solid #111" }}>
-        {bands.map(band => (
-          <div key={band.id} className="pt-3 text-center">
-            <div className="w-2 h-2 rounded-full mx-auto mb-1.5" style={{ background: band.color }} />
-            <p className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>{band.label}</p>
-            <p className="text-xs font-mono mt-0.5" style={{ color: band.color }}>
-              {fmtFreq(band.freq)}Hz
-            </p>
+      {/* Band cards */}
+      <div className="px-4 pb-4 grid grid-cols-4 gap-2">
+        {bands.map(b => (
+          <div
+            key={b.id}
+            className="rounded-xl p-2.5 text-center transition-all duration-100"
+            style={{
+              background: dragging === b.id ? b.color + "14" : "#0d0d0d",
+              border: `1px solid ${dragging === b.id ? b.color + "50" : "#1a1a1a"}`,
+            }}
+          >
+            <div className="w-2 h-2 rounded-full mx-auto mb-1.5" style={{ background: b.color }} />
+            <p className="text-xs font-semibold mb-1" style={{ color: b.color }}>{b.label}</p>
             <p className="text-xs font-mono" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {band.gain >= 0 ? "+" : ""}{band.gain.toFixed(1)} dB
+              {fmtFreq(b.freq)} Hz
+            </p>
+            <p className="text-xs font-mono mt-0.5" style={{
+              color: b.gain > 0.1 ? "#4ade80" : b.gain < -0.1 ? "#f87171" : "rgba(255,255,255,0.28)",
+            }}>
+              {b.gain >= 0 ? "+" : ""}{b.gain.toFixed(1)} dB
             </p>
           </div>
         ))}
       </div>
+
+      {loadState === "error" && (
+        <div className="px-5 pb-4 text-center">
+          <p className="text-xs" style={{ color: "#f87171" }}>
+            Could not load audio — the URL must be a direct audio file with CORS headers.
+          </p>
+        </div>
+      )}
+      {!audioUrl && (
+        <div className="px-5 pb-4 text-center">
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>
+            Drag the handles to explore the EQ curve — add an audio URL in the editor to hear it live
+          </p>
+        </div>
+      )}
     </div>
   );
 }

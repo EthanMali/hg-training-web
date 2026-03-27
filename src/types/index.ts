@@ -62,11 +62,12 @@ export interface QuizBlockContent {
 }
 export interface CalloutBlockContent { variant: CalloutVariant; body: string; }
 
-export type InteractiveSubtype = "eq" | "signal_flow";
+export type InteractiveSubtype = "eq" | "compressor" | "reverb" | "panner" | "delay" | "gate" | "signal_flow";
 export interface InteractiveBlockContent {
   subtype: InteractiveSubtype;
   title?: string;
   description?: string;
+  audioUrl?: string;
 }
 
 export type BlockContent =

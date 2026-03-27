@@ -1,6 +1,6 @@
 "use client";
 import { useState, type ElementType } from "react";
-import { Sliders, GitBranch, Activity, Waves, AudioLines, Clock, Gauge } from "lucide-react";
+import { Sliders, GitBranch, Activity, Waves, AudioLines, Clock, Gauge, Link } from "lucide-react";
 import type { ContentBlock, InteractiveBlockContent, InteractiveSubtype } from "@/types";
 
 const SUBTYPES: { type: InteractiveSubtype; label: string; desc: string; Icon: ElementType }[] = [

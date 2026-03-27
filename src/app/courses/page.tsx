@@ -102,32 +102,48 @@ export default async function CoursesPage() {
                         <Link
                           key={course.id}
                           href={`/courses/${course.slug}`}
-                          className="group flex flex-col p-6 rounded-xl transition-all duration-200"
+                          className="group flex flex-col rounded-xl transition-all duration-200 overflow-hidden"
                           style={{ border: "1px solid #1a1a1a", background: "#0a0a0a" }}
                         >
-                          <div className="flex items-center justify-between mb-4">
-                            <Badge variant={difficulty}>{difficulty}</Badge>
-                            <div className="flex items-center gap-1 text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
-                              <Clock size={11} /> {course.estimated_minutes}m
+                          {course.thumbnail_url ? (
+                            <div className="w-full aspect-video overflow-hidden bg-black">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={course.thumbnail_url}
+                                alt={course.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
                             </div>
-                          </div>
-                          <h3 className="font-semibold text-white mb-2 group-hover:text-white transition-colors">{course.title}</h3>
-                          {course.description && (
-                            <p className="text-sm line-clamp-2 mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>{course.description}</p>
+                          ) : (
+                            <div className="w-full aspect-video flex items-center justify-center" style={{ background: "#0f0f0f" }}>
+                              <BookOpen size={28} style={{ color: "rgba(255,255,255,0.08)" }} />
+                            </div>
                           )}
-                          <div className="mt-auto space-y-3">
-                            {total > 0 && (
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-                                  <span>{total} lessons</span>
-                                  <span>{completed}/{total} done</span>
-                                </div>
-                                <Progress value={pct} size="xs" />
+                          <div className="p-5 flex flex-col flex-1">
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge variant={difficulty}>{difficulty}</Badge>
+                              <div className="flex items-center gap-1 text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
+                                <Clock size={11} /> {course.estimated_minutes}m
                               </div>
+                            </div>
+                            <h3 className="font-semibold text-white mb-2 group-hover:text-white transition-colors">{course.title}</h3>
+                            {course.description && (
+                              <p className="text-sm line-clamp-2 mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>{course.description}</p>
                             )}
-                            <div className="flex items-center gap-1 text-xs transition-colors" style={{ color: "rgba(255,255,255,0.3)" }}>
-                              {completed === total && total > 0 ? "Review course" : completed > 0 ? "Continue" : "Start learning"}
-                              <ArrowRight size={11} />
+                            <div className="mt-auto space-y-3">
+                              {total > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
+                                    <span>{total} lessons</span>
+                                    <span>{completed}/{total} done</span>
+                                  </div>
+                                  <Progress value={pct} size="xs" />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1 text-xs transition-colors" style={{ color: "rgba(255,255,255,0.3)" }}>
+                                {completed === total && total > 0 ? "Review course" : completed > 0 ? "Continue" : "Start learning"}
+                                <ArrowRight size={11} />
+                              </div>
                             </div>
                           </div>
                         </Link>

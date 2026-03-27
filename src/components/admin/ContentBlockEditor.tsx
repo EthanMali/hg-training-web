@@ -39,7 +39,7 @@ const BLOCK_TYPES = [
   { type: "quiz" as BlockType,    label: "Quiz",    desc: "Multiple-choice check",       Icon: HelpCircle,   color: "#f59e0b" },
   { type: "diagram" as BlockType, label: "Diagram", desc: "Interactive diagram",         Icon: Network,      color: "#06b6d4" },
   { type: "callout" as BlockType,      label: "Callout",     desc: "Tip, warning, or note box",     Icon: AlertCircle,  color: "#f97316" },
-  { type: "interactive" as BlockType,  label: "Interactive", desc: "EQ lab or signal flow activity", Icon: Zap,          color: "#a855f7" },
+  { type: "interactive" as BlockType,  label: "Interactive", desc: "EQ lab, compressor, signal flow", Icon: Zap,          color: "#a855f7" },
 ];
 
 function getMeta(type: BlockType) {
